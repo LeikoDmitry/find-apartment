@@ -123,3 +123,7 @@ Dockerfile.dev               # образ с dev-зависимостями дл
 docker-compose.yml           # сервисы finder, watcher, checks
 pyproject.toml               # конфиг ruff и mypy
 ```
+
+## Лицензия
+
+[MIT](LICENSE)
