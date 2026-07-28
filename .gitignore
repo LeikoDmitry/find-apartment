@@ -1,0 +1,19 @@
+# Secrets and generated data - never commit
+config.yaml
+listings.db
+listings.db-wal
+listings.db-shm
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Tool caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Editor / OS
+.DS_Store
+.claude/

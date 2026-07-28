@@ -1,0 +1,29 @@
+services:
+  finder:
+    build: .
+    image: find-apartment:latest
+    environment:
+      - TZ=Europe/Minsk
+    volumes:
+      - .:/app
+    command: sh -c "while true; do python find_apartments.py; sleep 1800; done"
+    restart: unless-stopped
+
+  watcher:
+    build: .
+    image: find-apartment:latest
+    environment:
+      - TZ=Europe/Minsk
+    volumes:
+      - .:/app
+    command: python telegram_command_watcher.py
+    restart: unless-stopped
+
+  checks:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    image: find-apartment-dev:latest
+    profiles: ["checks"]
+    volumes:
+      - .:/app
