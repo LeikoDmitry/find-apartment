@@ -53,8 +53,21 @@ Telegram, курсор обновляется на каждый опрос). К�
 
 Требуется установленный [Docker](https://www.docker.com/) с Docker Compose.
 
+`docker-compose.yml` ссылается на готовый образ
+`ghcr.io/leikodmitry/find-apartment:1.0.0` (multi-arch: amd64 + arm64), но
+у сервисов также указан `build: .`, так что можно либо собрать локально:
+
 ```bash
 docker compose up -d --build
+```
+
+либо забрать уже собранный образ без локальной сборки. Пакет приватный
+(наследует видимость репозитория), поэтому сначала логин в GHCR:
+
+```bash
+echo "$GITHUB_TOKEN" | docker login ghcr.io -u <github-username> --password-stdin
+docker compose pull finder watcher
+docker compose up -d
 ```
 
 Поднимутся два сервиса:
@@ -111,6 +124,18 @@ docker compose run --rm checks
 
 Под капотом: `ruff format --check . && ruff check . && mypy && pytest -q`.
 
+## Релизы и Docker-образ
+
+Каждый тег вида `vX.Y.Z` автоматически собирается и публикуется в GitHub
+Container Registry воркфлоу `.github/workflows/publish.yml` — образ
+`ghcr.io/leikodmitry/find-apartment:X.Y.Z` (и `:latest`), multi-arch
+(amd64 + arm64). Для тегов, созданных до появления воркфлоу, можно
+запустить публикацию вручную (`workflow_dispatch` в Actions, поле `ref` —
+нужный тег).
+
+`docker-compose.yml` закреплён на конкретной версии (не `:latest`) —
+после нового релиза тег в `image:` нужно поднять руками.
+
 ## Запуск без Docker
 
 Требуется Python 3.12+.
@@ -132,16 +157,18 @@ pytest                                # тесты
 ## Структура проекта
 
 ```
-find_apartments.py           # скрапинг Kufar/Realt.by, ConfigStore, ListingsStore, Telegram-уведомления
-check_telegram_commands.py   # разовая проверка команд в Telegram
-telegram_command_watcher.py  # long-polling для мгновенной реакции на команды
-config.yaml                  # настройки + Telegram-креды (создаётся автоматически)
-listings.db                  # SQLite: полные данные найденных объявлений (создаётся автоматически)
-tests/                       # unit-тесты (pytest)
-Dockerfile                   # образ для finder/watcher
-Dockerfile.dev               # образ с dev-зависимостями для сервиса checks
-docker-compose.yml           # сервисы finder, watcher, checks
-pyproject.toml               # конфиг ruff и mypy
+find_apartments.py             # скрапинг Kufar/Realt.by, ConfigStore, ListingsStore, Telegram-уведомления
+check_telegram_commands.py     # разовая проверка команд в Telegram
+telegram_command_watcher.py    # long-polling для мгновенной реакции на команды
+config.yaml                    # настройки + Telegram-креды (создаётся автоматически)
+listings.db                    # SQLite: полные данные найденных объявлений (создаётся автоматически)
+tests/                         # unit-тесты (pytest)
+Dockerfile                     # образ для finder/watcher (публикуется в GHCR)
+Dockerfile.dev                 # образ с dev-зависимостями для сервиса checks
+docker-compose.yml             # сервисы finder, watcher, checks
+pyproject.toml                 # конфиг ruff и mypy
+.github/workflows/tests.yml    # CI: ruff + mypy + pytest на push/PR
+.github/workflows/publish.yml  # сборка и публикация образа в GHCR на тег vX.Y.Z
 ```
 
 ## Лицензия
