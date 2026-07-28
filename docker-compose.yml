@@ -1,7 +1,7 @@
 services:
   finder:
     build: .
-    image: find-apartment:latest
+    image: ghcr.io/leikodmitry/find-apartment:latest
     environment:
       - TZ=Europe/Minsk
     volumes:
@@ -11,7 +11,7 @@ services:
 
   watcher:
     build: .
-    image: find-apartment:latest
+    image: ghcr.io/leikodmitry/find-apartment:latest
     environment:
       - TZ=Europe/Minsk
     volumes:
