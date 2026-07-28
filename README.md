@@ -1,6 +1,11 @@
 # find-apartment
 
 [![Tests](https://github.com/LeikoDmitry/find-apartment/actions/workflows/tests.yml/badge.svg)](https://github.com/LeikoDmitry/find-apartment/actions/workflows/tests.yml)
+[![Publish Docker image](https://github.com/LeikoDmitry/find-apartment/actions/workflows/publish.yml/badge.svg)](https://github.com/LeikoDmitry/find-apartment/actions/workflows/publish.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue.svg)](https://www.python.org/downloads/)
+[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+[![Checked with mypy](https://www.mypy-lang.org/static/mypy_badge.svg)](https://mypy-lang.org/)
 
 Поиск квартир в аренду в Минске (Ленинский район + Минск-Мир) на Kufar и Realt.by
 с уведомлениями в Telegram. Найденные объявления сохраняются в SQLite (`listings.db`),
