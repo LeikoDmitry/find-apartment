@@ -79,7 +79,7 @@ docker compose down             # остановить всё
 в уже работающем контейнере `finder`:
 
 ```bash
-docker compose exec finder python find_apartments.py
+docker compose run --rm finder python find_apartments.py
 ```
 
 Полезные флаги:
