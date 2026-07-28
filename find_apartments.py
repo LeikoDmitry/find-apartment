@@ -569,12 +569,12 @@ class ListingNotifier:
                     client.send_message(text)
                 sent += 1
             except Exception as e:
-                print(f"Telegram send failed for {row.get('link')}: {e}", file=sys.stderr)
+                print(f"Не удалось отправить в Telegram {row.get('link')}: {e}", file=sys.stderr)
                 try:
                     client.send_message(text)
                     sent += 1
                 except Exception as e2:
-                    print(f"Telegram fallback text also failed for {row.get('link')}: {e2}", file=sys.stderr)
+                    print(f"Резервная текстовая отправка тоже не удалась для {row.get('link')}: {e2}", file=sys.stderr)
         return sent
 
 
@@ -627,13 +627,13 @@ class ApartmentFinder:
 
         ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         print(
-            f"[{ts}] Saved {len(all_rows)} listings ({before - len(all_rows)} duplicates merged) "
-            f"({args.min}-{args.max} BYN) to listings.db"
+            f"[{ts}] Сохранено {len(all_rows)} объявлений ({before - len(all_rows)} дублей объединено) "
+            f"({args.min}-{args.max} BYN) в listings.db"
         )
         if sent is not None:
-            print(f"Telegram: sent {sent} new listing(s)" if sent else "Telegram: no new listings to send")
+            print(f"Telegram: отправлено {sent} новых объявлений" if sent else "Telegram: новых объявлений нет")
         if errors:
-            print("Errors:", "; ".join(errors), file=sys.stderr)
+            print("Ошибки:", "; ".join(errors), file=sys.stderr)
 
     def _filter_min_lease_year(self, rows: list[Row]) -> list[Row]:
         kept = []
@@ -664,7 +664,10 @@ class ApartmentFinder:
                     if attempt == 0:
                         time.sleep(1)
                     else:
-                        print(f"Full description fetch failed for ad {row['_kufar_ad_id']}: {e}", file=sys.stderr)
+                        print(
+                            f"Не удалось загрузить полное описание объявления {row['_kufar_ad_id']}: {e}",
+                            file=sys.stderr,
+                        )
             if full_description:
                 row["description"] = full_description
             time.sleep(0.3)  # be polite to kufar's detail-page endpoint

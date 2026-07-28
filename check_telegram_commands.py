@@ -72,7 +72,7 @@ def main() -> None:
     try:
         client = TelegramClient.from_config()
     except TelegramNotConfigured:
-        print("Telegram not configured, nothing to check.")
+        print("Telegram не настроен, проверять нечего.")
         return
 
     settings_store = SettingsStore()
@@ -88,7 +88,7 @@ def main() -> None:
     resp.raise_for_status()
     updates = resp.json().get("result", [])
     if not updates:
-        print("No new messages.")
+        print("Новых сообщений нет.")
         return
 
     settings = settings_store.load()
@@ -102,9 +102,9 @@ def main() -> None:
 
     if changed:
         settings_store.save(settings)
-        print(f"Settings updated: {settings}")
+        print(f"Настройки обновлены: {settings}")
     else:
-        print("No recognized commands in new messages.")
+        print("Распознанных команд в новых сообщениях нет.")
 
     offset_store.save(max_update_id + 1)
 

@@ -721,7 +721,7 @@ class TestApartmentFinder:
         notified_rows = finder.notifier.notify.call_args[0][0]
         assert [r["link"] for r in notified_rows] == ["r1", "k1"]  # cheaper first
         finder.notifier.notify.assert_called_once()
-        assert "Saved 2 listings" in capsys.readouterr().out
+        assert "Сохранено 2 объявлений" in capsys.readouterr().out
 
     def test_run_filters_by_allowed_rooms(self):
         finder = self._finder(

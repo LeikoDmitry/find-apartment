@@ -111,7 +111,7 @@ class TestMain:
 
         ctc.main()
 
-        assert "Telegram not configured" in capsys.readouterr().out
+        assert "Telegram не настроен" in capsys.readouterr().out
 
     def test_prints_message_when_no_new_updates(self, monkeypatch, capsys):
         client = Mock(token="TOKEN")
@@ -125,7 +125,7 @@ class TestMain:
 
         ctc.main()
 
-        assert "No new messages." in capsys.readouterr().out
+        assert "Новых сообщений нет." in capsys.readouterr().out
         offset_store.save.assert_not_called()
 
     def test_processes_recognized_command_and_persists_state(self, monkeypatch, capsys):
@@ -149,7 +149,7 @@ class TestMain:
 
         settings_store.save.assert_called_once()
         offset_store.save.assert_called_once_with(7)
-        assert "Settings updated" in capsys.readouterr().out
+        assert "Настройки обновлены" in capsys.readouterr().out
 
     def test_no_recognized_commands_still_advances_offset(self, monkeypatch, capsys):
         client = Mock(token="TOKEN")
@@ -172,4 +172,4 @@ class TestMain:
 
         settings_store.save.assert_not_called()
         offset_store.save.assert_called_once_with(7)
-        assert "No recognized commands" in capsys.readouterr().out
+        assert "Распознанных команд" in capsys.readouterr().out

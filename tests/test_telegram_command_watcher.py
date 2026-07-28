@@ -78,5 +78,5 @@ class TestCommandWatcher:
         with pytest.raises(RuntimeError, match="stop after sleep"):
             watcher.run()
 
-        assert "Poll error: network down" in capsys.readouterr().out
+        assert "Ошибка опроса: network down" in capsys.readouterr().out
         processor.process.assert_not_called()

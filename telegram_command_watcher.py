@@ -30,7 +30,7 @@ class CommandWatcher:
 
     def run(self) -> NoReturn:
         offset = self.offset_store.load()
-        print("Watching for Telegram commands...", flush=True)
+        print("Слежу за командами в Telegram...", flush=True)
 
         while True:
             try:
@@ -42,7 +42,7 @@ class CommandWatcher:
                 resp.raise_for_status()
                 updates = resp.json().get("result", [])
             except Exception as e:
-                print(f"Poll error: {e}", flush=True)
+                print(f"Ошибка опроса: {e}", flush=True)
                 time.sleep(5)
                 continue
 
@@ -59,7 +59,7 @@ class CommandWatcher:
             self.offset_store.save(offset)
             if changed:
                 self.settings_store.save(settings)
-                print(f"Settings updated: {settings}", flush=True)
+                print(f"Настройки обновлены: {settings}", flush=True)
 
 
 def main() -> NoReturn:
