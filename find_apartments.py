@@ -22,6 +22,7 @@ from typing import Any, ClassVar
 import requests
 import yaml
 from rich.console import Console
+from rich.table import Table
 
 USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
@@ -148,6 +149,16 @@ class ListingsStore:
         with self._connection() as conn:
             rows = conn.execute("SELECT link FROM listings").fetchall()
         return {link for (link,) in rows}
+
+    def all_listings(self) -> list[dict[str, Any]]:
+        """All listings ever recorded, cheapest first (NULL prices last)."""
+        with self._connection() as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                "SELECT link, source, price_byn, rooms, area_m2, floor, floors_total, address, updated "
+                "FROM listings ORDER BY price_byn IS NULL, price_byn"
+            ).fetchall()
+        return [dict(row) for row in rows]
 
     def save(self, rows: list[Row]) -> None:
         """Upsert full listing data for every row that has a link.
@@ -591,7 +602,8 @@ class ApartmentFinder:
         self.realt = RealtScraper()
         self.scrapers: list[Scraper] = [self.kufar, self.realt]
         self.deduper = ListingDeduper()
-        self.notifier = ListingNotifier()
+        self.listings_store = ListingsStore()
+        self.notifier = ListingNotifier(listings_store=self.listings_store)
 
     def run(self, args: argparse.Namespace) -> None:
         allowed_rooms = {r.strip() for r in args.rooms.split(",") if r.strip()}
@@ -648,6 +660,31 @@ class ApartmentFinder:
                 console.print("[dim]Telegram: новых объявлений нет[/dim]")
         if errors:
             error_console.print("Ошибки: " + "; ".join(errors))
+
+        self._print_listings_table()
+
+    def _print_listings_table(self) -> None:
+        listings = self.listings_store.all_listings()
+        table = Table(title=f"Все объявления в базе ({len(listings)})")
+        table.add_column("Цена, BYN", justify="right")
+        table.add_column("Комн.", justify="center")
+        table.add_column("Площадь, м²", justify="right")
+        table.add_column("Этаж", justify="center")
+        table.add_column("Адрес")
+        table.add_column("Источник")
+        table.add_column("Обновлено")
+        for row in listings:
+            floor = f"{row['floor']}/{row['floors_total']}" if row["floor"] and row["floors_total"] else "—"
+            table.add_row(
+                f"{row['price_byn']:.0f}" if row["price_byn"] is not None else "—",
+                str(row["rooms"] or "—"),
+                str(row["area_m2"] or "—"),
+                floor,
+                row["address"] or "—",
+                row["source"] or "—",
+                row["updated"] or "—",
+            )
+        console.print(table)
 
     def _filter_min_lease_year(self, rows: list[Row]) -> list[Row]:
         kept = []

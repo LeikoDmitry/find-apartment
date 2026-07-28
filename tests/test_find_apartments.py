@@ -395,6 +395,22 @@ class TestListingsStore:
         assert first_seen_at == "2026-01-01T10:00:00"
         assert last_seen_at == "2026-01-02T12:00:00"
 
+    def test_all_listings_sorted_by_price_with_nulls_last(self, tmp_path):
+        store = fa.ListingsStore(tmp_path / "listings.db")
+        store.save(
+            [
+                dict(_row("cheap", address="Немига ул., 5"), price_byn=500.0),
+                dict(_row("no_price", address="Аренда"), price_byn=None),
+                dict(_row("expensive", address="Игуменский тракт, 20"), price_byn=1200.0),
+            ]
+        )
+
+        listings = store.all_listings()
+
+        assert [row["link"] for row in listings] == ["cheap", "expensive", "no_price"]
+        assert listings[0]["price_byn"] == 500.0
+        assert listings[0]["address"] == "Немига ул., 5"
+
 
 class TestListingNotifier:
     def _notifier(self, tmp_path, configured=True):
@@ -709,6 +725,7 @@ class TestApartmentFinder:
         finder.scrapers = [finder.kufar, finder.realt]
         finder.deduper = fa.ListingDeduper()
         finder.notifier = Mock(notify=Mock(return_value=0))
+        finder.listings_store = Mock(all_listings=Mock(return_value=[]))
         return finder
 
     def test_run_merges_sorts_by_price_and_saves(self, capsys):
@@ -777,3 +794,17 @@ class TestApartmentFinder:
 
         notified_rows = finder.notifier.notify.call_args[0][0]
         assert notified_rows[0]["description"] == "полное описание"
+
+    def test_run_prints_a_table_of_all_stored_listings(self, tmp_path, capsys):
+        # notifier is mocked (see _finder), so it never touches listings_store itself -
+        # the table below reflects only what's seeded here, independent of this run's rows.
+        finder = self._finder(kufar_rows=[_row("k1")])
+        finder.listings_store = fa.ListingsStore(tmp_path / "listings.db")
+        finder.listings_store.save([dict(_row("old", address="Немига ул., 5"), price_byn=900.0)])
+
+        finder.run(_default_args())
+
+        out = capsys.readouterr().out
+        assert "Все объявления в базе (1)" in out
+        assert "Немига ул., 5" in out
+        assert "900" in out
