@@ -1,5 +1,7 @@
 # find-apartment
 
+[![Tests](https://github.com/LeikoDmitry/find-apartment/actions/workflows/tests.yml/badge.svg)](https://github.com/LeikoDmitry/find-apartment/actions/workflows/tests.yml)
+
 Поиск квартир в аренду в Минске (Ленинский район + Минск-Мир) на Kufar и Realt.by
 с уведомлениями в Telegram. Найденные объявления сохраняются в SQLite (`listings.db`),
 а новые (ещё не виденные) — присылаются в чат. Фильтры по цене и количеству комнат
