@@ -9,9 +9,6 @@ on:
         description: "Tag to build and publish (e.g. v1.0.0)"
         required: true
 
-env:
-  IMAGE: ghcr.io/${{ github.repository }}
-
 jobs:
   publish:
     runs-on: ubuntu-latest
@@ -30,11 +27,12 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Determine version tag
+      - name: Determine image name and version tag
         id: version
         run: |
           REF="${{ github.event.inputs.ref || github.ref_name }}"
           echo "tag=${REF#v}" >> "$GITHUB_OUTPUT"
+          echo "image=ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
 
       - name: Build and push
         uses: docker/build-push-action@v6
@@ -43,5 +41,5 @@ jobs:
           file: Dockerfile
           push: true
           tags: |
-            ${{ env.IMAGE }}:${{ steps.version.outputs.tag }}
-            ${{ env.IMAGE }}:latest
+            ${{ steps.version.outputs.image }}:${{ steps.version.outputs.tag }}
+            ${{ steps.version.outputs.image }}:latest
