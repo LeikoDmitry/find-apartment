@@ -9,3 +9,4 @@ pyproject.toml
 requirements-dev.txt
 listings.db-wal
 listings.db-shm
+.env

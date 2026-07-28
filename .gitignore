@@ -3,6 +3,7 @@ config.yaml
 listings.db
 listings.db-wal
 listings.db-shm
+.env
 
 # Python
 .venv/
