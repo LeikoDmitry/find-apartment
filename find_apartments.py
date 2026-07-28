@@ -12,7 +12,6 @@ import json
 import os
 import re
 import sqlite3
-import sys
 import time
 import urllib.parse
 import urllib.request
@@ -22,6 +21,7 @@ from typing import Any, ClassVar
 
 import requests
 import yaml
+from rich.console import Console
 
 USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
@@ -31,6 +31,12 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_PATH = os.path.join(SCRIPT_DIR, "config.yaml")
 LISTINGS_DB_PATH = os.path.join(SCRIPT_DIR, "listings.db")
 NO_PHOTO_PATH = os.path.join(SCRIPT_DIR, "no_photo.png")
+
+# Fixed width avoids rich wrapping long log lines to the detected terminal
+# width (80 cols by default off a real TTY, e.g. under `docker logs` or pytest),
+# which would otherwise split a single log line across two.
+console = Console(width=200)
+error_console = Console(width=200, stderr=True, style="red")
 
 STREET_TYPE = (
     r"(?:ул(?:ица)?|просп(?:ект)?|пер(?:еулок)?|тракт|б(?:ул(?:ьвар)?|-р)|наб(?:ережная)?|пл(?:ощадь)?|ш(?:оссе)?|пр-т)"
@@ -569,12 +575,12 @@ class ListingNotifier:
                     client.send_message(text)
                 sent += 1
             except Exception as e:
-                print(f"Не удалось отправить в Telegram {row.get('link')}: {e}", file=sys.stderr)
+                error_console.print(f"Не удалось отправить в Telegram {row.get('link')}: {e}")
                 try:
                     client.send_message(text)
                     sent += 1
                 except Exception as e2:
-                    print(f"Резервная текстовая отправка тоже не удалась для {row.get('link')}: {e2}", file=sys.stderr)
+                    error_console.print(f"Резервная текстовая отправка тоже не удалась для {row.get('link')}: {e2}")
         return sent
 
 
@@ -593,47 +599,55 @@ class ApartmentFinder:
         all_rows: list[Row] = []
         errors: list[str] = []
         for scraper in self.scrapers:
-            print(f"Поиск на {scraper.source_name}...", flush=True)
+            console.print(f"[cyan]🔎 Поиск на[/cyan] [bold]{scraper.source_name}[/bold]...")
             try:
                 rows = scraper.fetch(args.min, args.max)
             except Exception as e:
                 errors.append(f"{scraper.source_name}: {e}")
                 continue
-            print(f"  {scraper.source_name}: найдено {len(rows)}", flush=True)
+            console.print(f"  [green]✓[/green] {scraper.source_name}: найдено [bold]{len(rows)}[/bold]")
             all_rows.extend(rows)
 
         if allowed_rooms:
             all_rows = [r for r in all_rows if str(r.get("rooms")) in allowed_rooms]
-            print(f"Фильтр по комнатам ({args.rooms}): осталось {len(all_rows)}", flush=True)
+            console.print(f"[yellow]Фильтр по комнатам ({args.rooms}):[/yellow] осталось [bold]{len(all_rows)}[/bold]")
 
         if args.min_lease_year:
             all_rows = self._filter_min_lease_year(all_rows)
-            print(f"Фильтр по сроку аренды: осталось {len(all_rows)}", flush=True)
+            console.print(f"[yellow]Фильтр по сроку аренды:[/yellow] осталось [bold]{len(all_rows)}[/bold]")
 
         kufar_pending = sum(1 for r in all_rows if r["source"] == self.kufar.source_name and r.get("_kufar_ad_id"))
         if kufar_pending:
-            print(f"Загрузка полных описаний с {self.kufar.source_name} ({kufar_pending})...", flush=True)
+            console.print(
+                f"[cyan]📄 Загрузка полных описаний с[/cyan] {self.kufar.source_name} [bold]({kufar_pending})[/bold]..."
+            )
         self._fill_kufar_full_descriptions(all_rows)
 
         for row in all_rows:
             row.pop("_realt_code", None)
             row.pop("_kufar_ad_id", None)
 
-        print("Объединение дублей по адресу...", flush=True)
+        console.print("[cyan]🔗 Объединение дублей по адресу...[/cyan]")
         before = len(all_rows)
         all_rows = self.deduper.dedupe(all_rows)
         all_rows.sort(key=lambda r: (r["price_byn"] is None, r["price_byn"]))
         sent = self.notifier.notify(all_rows, notify_all=args.notify_all)
 
         ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        print(
-            f"[{ts}] Сохранено {len(all_rows)} объявлений ({before - len(all_rows)} дублей объединено) "
-            f"({args.min}-{args.max} BYN) в listings.db"
+        console.print(
+            f"[bold green]✅ [{ts}][/bold green] Сохранено [bold]{len(all_rows)}[/bold] объявлений "
+            f"([dim]{before - len(all_rows)} дублей объединено[/dim]) "
+            f"([bold]{args.min}-{args.max}[/bold] BYN) в listings.db"
         )
         if sent is not None:
-            print(f"Telegram: отправлено {sent} новых объявлений" if sent else "Telegram: новых объявлений нет")
+            if sent:
+                console.print(
+                    f"[bold magenta]✈️ Telegram:[/bold magenta] отправлено [bold]{sent}[/bold] новых объявлений"
+                )
+            else:
+                console.print("[dim]Telegram: новых объявлений нет[/dim]")
         if errors:
-            print("Ошибки:", "; ".join(errors), file=sys.stderr)
+            error_console.print("Ошибки: " + "; ".join(errors))
 
     def _filter_min_lease_year(self, rows: list[Row]) -> list[Row]:
         kept = []
@@ -664,9 +678,8 @@ class ApartmentFinder:
                     if attempt == 0:
                         time.sleep(1)
                     else:
-                        print(
-                            f"Не удалось загрузить полное описание объявления {row['_kufar_ad_id']}: {e}",
-                            file=sys.stderr,
+                        error_console.print(
+                            f"Не удалось загрузить полное описание объявления {row['_kufar_ad_id']}: {e}"
                         )
             if full_description:
                 row["description"] = full_description
