@@ -203,7 +203,6 @@ class TestListingDeduper:
                 "floor": None,
                 "floors_total": None,
                 "address": "Физкультурная ул., 14",
-                "lease_term": "не указан",
                 "link": "https://kufar.by/1",
                 "updated": "2026-07-01",
                 "images": ["img1.jpg"],
@@ -217,7 +216,6 @@ class TestListingDeduper:
                 "floor": "3",
                 "floors_total": "9",
                 "address": "Физкультурная ул., 14",
-                "lease_term": "Год",
                 "link": "https://realt.by/1",
                 "updated": "2026-07-05",
                 "images": ["img2.jpg"],
@@ -236,7 +234,6 @@ class TestListingDeduper:
         assert entry["floors_total"] == "9"
         assert entry["images"] == ["img1.jpg", "img2.jpg"]
         assert entry["description"] == "a longer description"
-        assert entry["lease_term"] == "Год"
         assert entry["price_byn"] == 850.0  # cheaper of the two wins
         assert entry["updated"] == "2026-07-05"  # most recent wins
 
@@ -291,7 +288,7 @@ class TestFormatTelegramMessage:
         )
         assert "этаж —" in text
 
-    def test_includes_lease_term_and_description_when_present(self):
+    def test_includes_description_when_present(self):
         text = fa.format_telegram_message(
             {
                 "price_byn": 800.0,
@@ -300,14 +297,12 @@ class TestFormatTelegramMessage:
                 "floors_total": 5,
                 "address": "a",
                 "link": "l",
-                "lease_term": "Год",
                 "description": "хорошая квартира",
             }
         )
-        assert "📅 Срок аренды: Год" in text
         assert "📝 хорошая квартира" in text
 
-    def test_omits_lease_term_and_description_when_absent(self):
+    def test_omits_description_when_absent(self):
         text = fa.format_telegram_message(
             {
                 "price_byn": 800.0,
@@ -318,7 +313,6 @@ class TestFormatTelegramMessage:
                 "link": "l",
             }
         )
-        assert "Срок аренды" not in text
         assert "📝" not in text
 
 
@@ -336,7 +330,6 @@ def _row(link, images=None, source="kufar.by", address="Физкультурна
         "floor": "3",
         "floors_total": "9",
         "address": address,
-        "lease_term": "не указан",
         "description": "desc",
         "link": link,
         "updated": "2026-07-01",
@@ -663,7 +656,7 @@ class TestRealtScraper:
         assert row["address"] == "Немига ул., 5"
         assert row["updated"] == "2026-07-15"
         assert row["description"] == "Описание"
-        assert row["_realt_code"] == "abc"
+        assert row["link"] == "https://realt.by/rent-flat-for-long/object/abc/"
 
     def test_fetch_follows_pagination(self, monkeypatch):
         page1 = self._html([{"code": "p1", "priceRates": {"933": 900.0}}], total_count=2, page_size=1)
@@ -676,18 +669,9 @@ class TestRealtScraper:
 
         rows = fa.RealtScraper().fetch(500, 1300)
 
-        codes = {row["_realt_code"] for row in rows}
-        assert "p1" in codes and "p2" in codes
-
-    def test_fetch_lease_term_reads_detail_page(self, monkeypatch):
-        html = (
-            '<script id="__NEXT_DATA__" type="application/json">'
-            + json.dumps({"props": {"pageProps": {"object": {"leasePeriod": "Год"}}}})
-            + "</script>"
-        )
-        monkeypatch.setattr(fa, "http_get", lambda url: html.encode("utf-8"))
-
-        assert fa.RealtScraper().fetch_lease_term("abc") == "Год"
+        links = {row["link"] for row in rows}
+        assert "https://realt.by/rent-flat-for-long/object/p1/" in links
+        assert "https://realt.by/rent-flat-for-long/object/p2/" in links
 
 
 # --------------------------------------------------------------------------
@@ -708,7 +692,7 @@ class FakeScraper:
 
 
 def _default_args(**overrides):
-    args = Namespace(min=500, max=1300, rooms="", min_lease_year=False, notify_all=False)
+    args = Namespace(min=500, max=1300, rooms="", notify_all=False)
     for k, v in overrides.items():
         setattr(args, k, v)
     return args
@@ -759,30 +743,6 @@ class TestApartmentFinder:
         notified_rows = finder.notifier.notify.call_args[0][0]
         assert [r["link"] for r in notified_rows] == ["k1"]
         assert "realt.by is down" in capsys.readouterr().err
-
-    def test_run_drops_short_term_realt_listings_when_min_lease_year(self):
-        finder = self._finder(
-            kufar_rows=[_row("k1")],
-            realt_rows=[dict(_row("r1", source="realt.by"), _realt_code="r1code")],
-        )
-        finder.realt.fetch_lease_term = Mock(return_value="Месяц")
-
-        finder.run(_default_args(min_lease_year=True))
-
-        notified_rows = finder.notifier.notify.call_args[0][0]
-        # kufar listing always kept (no lease data available); short-term realt listing dropped
-        assert [r["link"] for r in notified_rows] == ["k1"]
-
-    def test_run_keeps_long_term_realt_listings_when_min_lease_year(self):
-        finder = self._finder(
-            realt_rows=[dict(_row("r1", source="realt.by"), _realt_code="r1code")],
-        )
-        finder.realt.fetch_lease_term = Mock(return_value="Год")
-
-        finder.run(_default_args(min_lease_year=True))
-
-        notified_rows = finder.notifier.notify.call_args[0][0]
-        assert [r["link"] for r in notified_rows] == ["r1"]
 
     def test_run_fills_in_full_kufar_description(self):
         finder = self._finder(

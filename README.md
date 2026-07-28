@@ -87,7 +87,6 @@ docker compose run --rm finder python find_apartments.py
   а не только новые.
 - `--min 600 --max 1200`, `--rooms 1,2` — разово переопределить фильтры без
   изменения `config.yaml`.
-- `--any-lease-term` — не отсеивать объявления с realt.by с коротким сроком аренды.
 
 Без Docker — то же самое, но `python find_apartments.py` в активированном venv
 (см. [«Запуск без Docker»](#запуск-без-docker)).

@@ -45,9 +45,9 @@ STREET_TYPE = (
 ADDRESS_RE = re.compile(r"([а-яё\-]+)\s+" + STREET_TYPE + r"\.?,?\s*(\d+[а-яёa-z\d/]*)", re.IGNORECASE)
 
 # A listing: source, price_byn, rooms, area_m2, floor, floors_total, address,
-# lease_term, description, link, updated, images, plus scraper-internal
-# bookkeeping (e.g. "_kufar_ad_id", "_realt_code"). Too loosely/dynamically
-# shaped for a TypedDict to pull its weight, so this is just a readability alias.
+# description, link, updated, images, plus scraper-internal bookkeeping
+# (e.g. "_kufar_ad_id"). Too loosely/dynamically shaped for a TypedDict to
+# pull its weight, so this is just a readability alias.
 Row = dict[str, Any]
 
 
@@ -130,7 +130,7 @@ class ListingsStore:
                 "CREATE TABLE IF NOT EXISTS listings ("
                 "link TEXT PRIMARY KEY, source TEXT, price_byn REAL, rooms TEXT, "
                 "area_m2 TEXT, floor TEXT, floors_total TEXT, address TEXT, "
-                "lease_term TEXT, description TEXT, photo TEXT, updated TEXT, images TEXT, "
+                "description TEXT, photo TEXT, updated TEXT, images TEXT, "
                 "first_seen_at TEXT NOT NULL, last_seen_at TEXT NOT NULL)"
             )
 
@@ -177,7 +177,6 @@ class ListingsStore:
                 row.get("floor"),
                 row.get("floors_total"),
                 row.get("address"),
-                row.get("lease_term"),
                 row.get("description"),
                 (row.get("images") or [None])[0],
                 row.get("updated"),
@@ -191,12 +190,12 @@ class ListingsStore:
         with self._connection() as conn:
             conn.executemany(
                 "INSERT INTO listings (link, source, price_byn, rooms, area_m2, floor, "
-                "floors_total, address, lease_term, description, photo, updated, images, "
-                "first_seen_at, last_seen_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                "floors_total, address, description, photo, updated, images, "
+                "first_seen_at, last_seen_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
                 "ON CONFLICT(link) DO UPDATE SET "
                 "source=excluded.source, price_byn=excluded.price_byn, rooms=excluded.rooms, "
                 "area_m2=excluded.area_m2, floor=excluded.floor, floors_total=excluded.floors_total, "
-                "address=excluded.address, lease_term=excluded.lease_term, "
+                "address=excluded.address, "
                 "description=excluded.description, photo=excluded.photo, updated=excluded.updated, "
                 "images=excluded.images, last_seen_at=excluded.last_seen_at",
                 values,
@@ -344,7 +343,6 @@ class KufarScraper(Scraper):
                         "floor": floor,
                         "floors_total": floors_total,
                         "address": address,
-                        "lease_term": "не указан",  # kufar exposes no lease-duration field for apartments
                         "link": ad.get("ad_link"),
                         "updated": list_time,
                         "images": images,
@@ -391,11 +389,7 @@ class RealtScraper(Scraper):
         "https://realt.by/rent/flat-for-long/minsk/leninskij-rajon/",
         "https://realt.by/rent/flat-for-long/minsk/minsk-mir-mk-r-n/",
     ]
-    DETAIL_URL = "https://realt.by/rent-flat-for-long/object/{code}/"
     BYN_CURRENCY_CODE = "933"
-    # realt.by's own leasePeriod labels; only these count as "at least a year"
-    # (999 = "Длительный" / indefinite long-term)
-    LONG_TERM_LABELS: ClassVar[set[str]] = {"Год", "Длительный"}
 
     def fetch(self, price_min: float, price_max: float) -> list[Row]:
         rows: list[Row] = []
@@ -429,12 +423,10 @@ class RealtScraper(Scraper):
                             "floor": o.get("storey"),
                             "floors_total": o.get("storeys"),
                             "address": o.get("address"),
-                            "lease_term": None,
                             "link": f"https://realt.by/rent-flat-for-long/object/{code}/" if code else None,
                             "updated": (o.get("updatedAt") or "")[:10],
                             "images": list(o.get("images") or []),
                             "description": clean_description(o.get("description")),
-                            "_realt_code": code,
                         }
                     )
                 total = pagination.get("totalCount", 0)
@@ -443,15 +435,6 @@ class RealtScraper(Scraper):
                     break
                 page += 1
         return rows
-
-    def fetch_lease_term(self, code: str) -> str | None:
-        """realt.by only exposes leasePeriod on the listing's detail page, not in search results."""
-        html = http_get(self.DETAIL_URL.format(code=code)).decode("utf-8", errors="replace")
-        m = re.search(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', html, re.S)
-        if not m:
-            return None
-        data = json.loads(m.group(1))
-        return data["props"]["pageProps"]["object"].get("leasePeriod")
 
 
 class ListingDeduper:
@@ -492,8 +475,6 @@ class ListingDeduper:
                 entry["images"] = list(dict.fromkeys((entry.get("images") or []) + (row.get("images") or [])))
                 if len(row.get("description") or "") > len(entry.get("description") or ""):
                     entry["description"] = row["description"]
-                if entry.get("lease_term") in (None, "не указан") and row.get("lease_term") not in (None, "не указан"):
-                    entry["lease_term"] = row["lease_term"]
                 if row.get("price_byn") is not None and (
                     entry.get("price_byn") is None or row["price_byn"] < entry["price_byn"]
                 ):
@@ -515,14 +496,11 @@ def format_telegram_message(row: Row) -> str:
     floor = row.get("floor")
     floors_total = row.get("floors_total")
     floor_str = f"{floor}/{floors_total}" if floor and floors_total else "—"
-    lease_term = row.get("lease_term")
     lines = [
         f"🆕🏠 Новая квартира: 💰 {row.get('price_byn')} BYN/мес",
         f"📐 {area} м² · 🏢 этаж {floor_str}",
         f"📍 {row.get('address')}",
     ]
-    if lease_term:
-        lines.append(f"📅 Срок аренды: {lease_term}")
     description = row.get("description")
     if description:
         lines.append(f"📝 {description}")
@@ -624,10 +602,6 @@ class ApartmentFinder:
             all_rows = [r for r in all_rows if str(r.get("rooms")) in allowed_rooms]
             console.print(f"[yellow]Фильтр по комнатам ({args.rooms}):[/yellow] осталось [bold]{len(all_rows)}[/bold]")
 
-        if args.min_lease_year:
-            all_rows = self._filter_min_lease_year(all_rows)
-            console.print(f"[yellow]Фильтр по сроку аренды:[/yellow] осталось [bold]{len(all_rows)}[/bold]")
-
         kufar_pending = sum(1 for r in all_rows if r["source"] == self.kufar.source_name and r.get("_kufar_ad_id"))
         if kufar_pending:
             console.print(
@@ -636,7 +610,6 @@ class ApartmentFinder:
         self._fill_kufar_full_descriptions(all_rows)
 
         for row in all_rows:
-            row.pop("_realt_code", None)
             row.pop("_kufar_ad_id", None)
 
         console.print("[cyan]🔗 Объединение дублей по адресу...[/cyan]")
@@ -686,22 +659,6 @@ class ApartmentFinder:
             )
         console.print(table)
 
-    def _filter_min_lease_year(self, rows: list[Row]) -> list[Row]:
-        kept = []
-        for row in rows:
-            if row["source"] == self.kufar.source_name:
-                # no lease-term data available from kufar.by; kept as-is (see printed note)
-                kept.append(row)
-                continue
-            try:
-                term = self.realt.fetch_lease_term(row["_realt_code"])
-            except Exception:
-                term = None
-            row["lease_term"] = term or "не указан"
-            if term is None or term in RealtScraper.LONG_TERM_LABELS:
-                kept.append(row)
-        return kept
-
     def _fill_kufar_full_descriptions(self, rows: list[Row]) -> None:
         for row in rows:
             if row["source"] != self.kufar.source_name or not row.get("_kufar_ad_id"):
@@ -730,17 +687,11 @@ def main() -> None:
     parser.add_argument("--max", type=float, default=settings["max_price"])
     parser.add_argument("--rooms", default=settings["rooms"], help="Comma-separated room counts to keep, e.g. 2,3")
     parser.add_argument(
-        "--any-lease-term",
-        action="store_true",
-        help="Don't filter out realt.by listings with a lease term under a year",
-    )
-    parser.add_argument(
         "--notify-all",
         action="store_true",
         help="Send every current listing to Telegram, not just new ones",
     )
     args = parser.parse_args()
-    args.min_lease_year = not args.any_lease_term
 
     ApartmentFinder().run(args)
 
