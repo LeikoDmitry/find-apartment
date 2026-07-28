@@ -593,23 +593,33 @@ class ApartmentFinder:
         all_rows: list[Row] = []
         errors: list[str] = []
         for scraper in self.scrapers:
+            print(f"Поиск на {scraper.source_name}...", flush=True)
             try:
-                all_rows.extend(scraper.fetch(args.min, args.max))
+                rows = scraper.fetch(args.min, args.max)
             except Exception as e:
                 errors.append(f"{scraper.source_name}: {e}")
+                continue
+            print(f"  {scraper.source_name}: найдено {len(rows)}", flush=True)
+            all_rows.extend(rows)
 
         if allowed_rooms:
             all_rows = [r for r in all_rows if str(r.get("rooms")) in allowed_rooms]
+            print(f"Фильтр по комнатам ({args.rooms}): осталось {len(all_rows)}", flush=True)
 
         if args.min_lease_year:
             all_rows = self._filter_min_lease_year(all_rows)
+            print(f"Фильтр по сроку аренды: осталось {len(all_rows)}", flush=True)
 
+        kufar_pending = sum(1 for r in all_rows if r["source"] == self.kufar.source_name and r.get("_kufar_ad_id"))
+        if kufar_pending:
+            print(f"Загрузка полных описаний с {self.kufar.source_name} ({kufar_pending})...", flush=True)
         self._fill_kufar_full_descriptions(all_rows)
 
         for row in all_rows:
             row.pop("_realt_code", None)
             row.pop("_kufar_ad_id", None)
 
+        print("Объединение дублей по адресу...", flush=True)
         before = len(all_rows)
         all_rows = self.deduper.dedupe(all_rows)
         all_rows.sort(key=lambda r: (r["price_byn"] is None, r["price_byn"]))
