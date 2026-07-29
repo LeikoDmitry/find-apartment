@@ -69,7 +69,7 @@ class TestCommandProcessor:
         client.send_message.assert_called_once()
         ack_text = client.send_message.call_args[0][0]
         assert "600" in ack_text and "1200" in ack_text
-        assert "30 минут" in ack_text
+        assert "10 минут" in ack_text
 
     def test_price_command_sorts_reversed_bounds(self):
         processor, client = self._processor()

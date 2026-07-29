@@ -52,7 +52,7 @@ class CommandProcessor:
             settings["min_price"], settings["max_price"] = min(lo, hi), max(lo, hi)
             self.telegram_client.send_message(
                 f"✅ Диапазон цен обновлён: {settings['min_price']}–{settings['max_price']} BYN.\n"
-                f"Применится при следующем поиске (раз в 30 минут).",
+                f"Применится при следующем поиске (раз в 10 минут).",
             )
             return True
 
@@ -61,7 +61,7 @@ class CommandProcessor:
             rooms = ",".join(sorted({r.strip() for r in m.group(1).split(",") if r.strip()}))
             settings["rooms"] = rooms
             self.telegram_client.send_message(
-                f"✅ Фильтр по комнатам обновлён: {rooms}.\nПрименится при следующем поиске (раз в 30 минут).",
+                f"✅ Фильтр по комнатам обновлён: {rooms}.\nПрименится при следующем поиске (раз в 10 минут).",
             )
             return True
 
