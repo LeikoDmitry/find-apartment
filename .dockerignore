@@ -7,6 +7,8 @@ __pycache__
 tests
 pyproject.toml
 requirements-dev.txt
+config.yaml
+listings.db
 listings.db-wal
 listings.db-shm
 .env
