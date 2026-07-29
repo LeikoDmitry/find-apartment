@@ -132,12 +132,15 @@ docker compose run --rm checks
 
 ## Релизы и Docker-образ
 
-Каждый тег вида `vX.Y.Z` автоматически собирается и публикуется в GitHub
-Container Registry воркфлоу `.github/workflows/publish.yml` — образ
-`ghcr.io/leikodmitry/find-apartment:X.Y.Z` (и `:latest`), multi-arch
-(amd64 + arm64). Для тегов, созданных до появления воркфлоу, можно
-запустить публикацию вручную (`workflow_dispatch` в Actions, поле `ref` —
-нужный тег).
+При каждом пуше в `master` воркфлоу `.github/workflows/release.yml` сам
+поднимает patch-версию (`vX.Y.Z` → `vX.Y.Z+1`), создаёт и пушит тег и
+публикует GitHub Release с автосгенерированным описанием (список
+смёрженных PR/коммитов). Пуш нового тега в свою очередь запускает
+`.github/workflows/publish.yml`, который собирает и публикует образ в GitHub
+Container Registry — `ghcr.io/leikodmitry/find-apartment:X.Y.Z` (и
+`:latest`), multi-arch (amd64 + arm64). Ручной запуск публикации
+(`workflow_dispatch` в Actions, поле `ref`) остаётся на случай тегов,
+созданных не через этот воркфлоу.
 
 `docker-compose.yml` закреплён на конкретной версии (не `:latest`) —
 после нового релиза тег в `image:` нужно поднять руками.
