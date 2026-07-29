@@ -69,6 +69,19 @@ def clean_description(text: str | None) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
+def parse_lon_lat_pair(value: Any) -> tuple[float, float] | None:
+    """Both kufar and realt encode a listing's map position as a [longitude,
+    latitude] pair; returns (latitude, longitude) - the order Telegram's
+    sendLocation expects - or None if `value` isn't a valid pair."""
+    if not (isinstance(value, list) and len(value) == 2):
+        return None
+    try:
+        longitude, latitude = float(value[0]), float(value[1])
+    except (TypeError, ValueError):
+        return None
+    return latitude, longitude
+
+
 class ConfigStore:
     """Read/write access to the single shared config.yaml file: user-adjustable
     search settings, Telegram credentials, and the command-poll offset.
@@ -346,6 +359,7 @@ class KufarScraper(Scraper):
                 )
                 list_time = ad.get("list_time", "")[:10]
                 images = [f"https://rms.kufar.by/v1/list_thumbs_2x/{im['path']}" for im in (ad.get("images") or [])]
+                coordinates = parse_lon_lat_pair(params.get("coordinates"))
                 rows.append(
                     {
                         "source": self.source_name,
@@ -359,6 +373,8 @@ class KufarScraper(Scraper):
                         "updated": list_time,
                         "images": images,
                         "description": clean_description(ad.get("body_short")),
+                        "latitude": coordinates[0] if coordinates else None,
+                        "longitude": coordinates[1] if coordinates else None,
                         "_kufar_ad_id": ad_id,
                     }
                 )
@@ -426,6 +442,7 @@ class RealtScraper(Scraper):
                     if price_byn is None or not (price_min <= price_byn <= price_max):
                         continue
                     seen_codes.add(code)
+                    coordinates = parse_lon_lat_pair(o.get("location"))
                     rows.append(
                         {
                             "source": self.source_name,
@@ -439,6 +456,8 @@ class RealtScraper(Scraper):
                             "updated": (o.get("updatedAt") or "")[:10],
                             "images": list(o.get("images") or []),
                             "description": clean_description(o.get("description")),
+                            "latitude": coordinates[0] if coordinates else None,
+                            "longitude": coordinates[1] if coordinates else None,
                         }
                     )
                 total = pagination.get("totalCount", 0)
@@ -481,7 +500,7 @@ class ListingDeduper:
                 entry = merged[key]
                 entry["_sources"].append(row["source"])
                 entry["_links"].append(row["link"])
-                for f in ("rooms", "area_m2", "floor", "floors_total"):
+                for f in ("rooms", "area_m2", "floor", "floors_total", "latitude", "longitude"):
                     if not entry.get(f) and row.get(f):
                         entry[f] = row[f]
                 entry["images"] = list(dict.fromkeys((entry.get("images") or []) + (row.get("images") or [])))
@@ -513,6 +532,9 @@ def format_telegram_message(row: Row, max_length: int | None = None) -> str:
         f"📐 {area} м² · 🏢 этаж {floor_str}",
         f"📍 {row.get('address')}",
     ]
+    latitude, longitude = row.get("latitude"), row.get("longitude")
+    if latitude is not None and longitude is not None:
+        header_lines.append(f"🗺 {latitude}, {longitude}")
     link_line = f"🔗 {row.get('link')}"
     description = row.get("description")
 

@@ -209,6 +209,8 @@ class TestListingDeduper:
                 "updated": "2026-07-01",
                 "images": ["img1.jpg"],
                 "description": "short",
+                "latitude": None,
+                "longitude": None,
             },
             {
                 "source": "realt.by",
@@ -222,6 +224,8 @@ class TestListingDeduper:
                 "updated": "2026-07-05",
                 "images": ["img2.jpg"],
                 "description": "a longer description",
+                "latitude": 53.9006,
+                "longitude": 27.559,
             },
         ]
         result = fa.ListingDeduper().dedupe(rows)
@@ -234,6 +238,8 @@ class TestListingDeduper:
         assert entry["area_m2"] == "45"
         assert entry["floor"] == "3"
         assert entry["floors_total"] == "9"
+        assert entry["latitude"] == 53.9006  # missing on the entry, filled in from the merged row
+        assert entry["longitude"] == 27.559
         assert entry["images"] == ["img1.jpg", "img2.jpg"]
         assert entry["description"] == "a longer description"
         assert entry["price_byn"] == 850.0  # cheaper of the two wins
@@ -316,6 +322,34 @@ class TestFormatTelegramMessage:
             }
         )
         assert "📝" not in text
+
+    def test_includes_coordinates_when_present(self):
+        text = fa.format_telegram_message(
+            {
+                "price_byn": 800.0,
+                "area_m2": "45",
+                "floor": 1,
+                "floors_total": 5,
+                "address": "a",
+                "link": "l",
+                "latitude": 53.9006,
+                "longitude": 27.559,
+            }
+        )
+        assert "🗺 53.9006, 27.559" in text
+
+    def test_omits_coordinates_when_absent(self):
+        text = fa.format_telegram_message(
+            {
+                "price_byn": 800.0,
+                "area_m2": "45",
+                "floor": 1,
+                "floors_total": 5,
+                "address": "a",
+                "link": "l",
+            }
+        )
+        assert "🗺" not in text
 
     def test_max_length_leaves_short_text_untouched(self):
         row = {
@@ -597,6 +631,7 @@ class TestKufarScraper:
                         {"p": "floor", "v": ["3"]},
                         {"p": "re_number_floors", "v": ["9"]},
                         {"p": "address", "v": "Независимости пр-т, 10"},
+                        {"p": "coordinates", "v": [27.5590, 53.9006]},
                     ],
                     "subject": "2-комн. квартира",
                     "price_byn": 80000,
@@ -625,7 +660,19 @@ class TestKufarScraper:
         assert row["updated"] == "2026-07-20"
         assert row["images"] == ["https://rms.kufar.by/v1/list_thumbs_2x/abc.jpg"]
         assert row["description"] == "Хорошая квартира"
+        assert row["latitude"] == 53.9006
+        assert row["longitude"] == 27.559
         assert row["_kufar_ad_id"] == 111
+
+    def test_fetch_leaves_coordinates_none_when_missing(self, monkeypatch):
+        payload = self._payload()
+        payload["ads"][0]["ad_parameters"] = [p for p in payload["ads"][0]["ad_parameters"] if p["p"] != "coordinates"]
+        monkeypatch.setattr(fa, "http_get", lambda url: json.dumps(payload).encode())
+
+        rows = fa.KufarScraper().fetch(500, 1300)
+
+        assert rows[0]["latitude"] is None
+        assert rows[0]["longitude"] is None
 
     def test_fetch_falls_back_to_region_labels_when_no_address(self, monkeypatch):
         payload = self._payload()
@@ -686,6 +733,7 @@ class TestRealtScraper:
                 "updatedAt": "2026-07-15T00:00:00",
                 "images": ["img.jpg"],
                 "description": "<b>Описание</b>",
+                "location": [27.5590, 53.9006],
             },
             {
                 "code": "def",
@@ -710,6 +758,8 @@ class TestRealtScraper:
         assert row["updated"] == "2026-07-15"
         assert row["description"] == "Описание"
         assert row["link"] == "https://realt.by/rent-flat-for-long/object/abc/"
+        assert row["latitude"] == 53.9006
+        assert row["longitude"] == 27.559
 
     def test_fetch_follows_pagination(self, monkeypatch):
         page1 = self._html([{"code": "p1", "priceRates": {"933": 900.0}}], total_count=2, page_size=1)
