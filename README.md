@@ -59,7 +59,7 @@ Telegram, курсор обновляется на каждый опрос). К�
 Требуется установленный [Docker](https://www.docker.com/) с Docker Compose.
 
 `docker-compose.yml` ссылается на готовый образ
-`ghcr.io/leikodmitry/find-apartment:1.0.0` (multi-arch: amd64 + arm64), но
+`ghcr.io/leikodmitry/find-apartment:1.0.1` (multi-arch: amd64 + arm64), но
 у сервисов также указан `build: .`, так что можно либо собрать локально:
 
 ```bash
