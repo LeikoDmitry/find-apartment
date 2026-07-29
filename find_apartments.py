@@ -13,6 +13,7 @@ import os
 import re
 import sqlite3
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 from abc import ABC, abstractmethod
@@ -153,6 +154,13 @@ class ListingsStore:
         with self._connection() as conn:
             rows = conn.execute("SELECT link FROM listings").fetchall()
         return {link for (link,) in rows}
+
+    def stored_descriptions(self) -> dict[str, str]:
+        """link -> description already on file, so callers can skip re-fetching
+        the full text for listings they've already scraped in a prior run."""
+        with self._connection() as conn:
+            rows = conn.execute("SELECT link, description FROM listings WHERE description IS NOT NULL").fetchall()
+        return {link: description for link, description in rows}
 
     def all_listings(self) -> list[dict[str, Any]]:
         """All listings ever recorded, cheapest first (NULL prices last)."""
@@ -678,24 +686,48 @@ class ApartmentFinder:
         console.print(table)
 
     def _fill_kufar_full_descriptions(self, rows: list[Row]) -> None:
+        # Listings already on file keep the full description fetched in a
+        # previous run - reuse it instead of re-hitting kufar's detail-page
+        # endpoint for the same ad every 10 minutes (that's what was tripping
+        # its 429 rate limit).
+        known_descriptions = self.listings_store.stored_descriptions()
+
         for row in rows:
             if row["source"] != self.kufar.source_name or not row.get("_kufar_ad_id"):
                 continue
+
+            known = known_descriptions.get(row["link"])
+            if known:
+                row["description"] = known
+                continue
+
             full_description = None
-            for attempt in range(2):
+            attempts = 3
+            for attempt in range(attempts):
                 try:
                     full_description = self.kufar.fetch_full_description(row["_kufar_ad_id"])
                     break
                 except Exception as e:
-                    if attempt == 0:
-                        time.sleep(1)
-                    else:
+                    if attempt == attempts - 1:
                         error_console.print(
                             f"Не удалось загрузить полное описание объявления {row['_kufar_ad_id']}: {e}"
                         )
+                    else:
+                        time.sleep(self._retry_delay(e, attempt))
             if full_description:
                 row["description"] = full_description
             time.sleep(0.3)  # be polite to kufar's detail-page endpoint
+
+    @staticmethod
+    def _retry_delay(error: Exception, attempt: int) -> float:
+        """A 429 means kufar wants us to slow down - honor Retry-After (or back
+        off a few seconds) instead of hammering it again after a flat 1s."""
+        if isinstance(error, urllib.error.HTTPError) and error.code == 429:
+            retry_after = error.headers.get("Retry-After") if error.headers else None
+            if retry_after and retry_after.isdigit():
+                return float(retry_after)
+            return 5.0 * (attempt + 1)
+        return 1.0
 
 
 def main() -> None:

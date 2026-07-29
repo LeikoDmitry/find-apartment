@@ -1,5 +1,7 @@
 import json
+import urllib.error
 from argparse import Namespace
+from email.message import Message
 from unittest.mock import Mock
 
 import pytest
@@ -369,6 +371,15 @@ class TestListingsStore:
     def test_seen_links_empty_for_fresh_store(self, tmp_path):
         store = fa.ListingsStore(tmp_path / "listings.db")
         assert store.seen_links() == set()
+
+    def test_stored_descriptions_empty_for_fresh_store(self, tmp_path):
+        store = fa.ListingsStore(tmp_path / "listings.db")
+        assert store.stored_descriptions() == {}
+
+    def test_stored_descriptions_maps_link_to_description(self, tmp_path):
+        store = fa.ListingsStore(tmp_path / "listings.db")
+        store.save([dict(_row("l1"), description="полное описание"), dict(_row("l2"), description=None)])
+        assert store.stored_descriptions() == {"l1": "полное описание"}
 
     def test_save_persists_full_listing_data(self, tmp_path):
         store = fa.ListingsStore(tmp_path / "listings.db")
@@ -751,7 +762,7 @@ class TestApartmentFinder:
         finder.scrapers = [finder.kufar, finder.realt]
         finder.deduper = fa.ListingDeduper()
         finder.notifier = Mock(notify=Mock(return_value=0))
-        finder.listings_store = Mock(all_listings=Mock(return_value=[]))
+        finder.listings_store = Mock(all_listings=Mock(return_value=[]), stored_descriptions=Mock(return_value={}))
         return finder
 
     def test_run_merges_sorts_by_price_and_saves(self, capsys):
@@ -796,6 +807,33 @@ class TestApartmentFinder:
 
         notified_rows = finder.notifier.notify.call_args[0][0]
         assert notified_rows[0]["description"] == "полное описание"
+
+    def test_run_reuses_stored_description_instead_of_refetching(self):
+        finder = self._finder(
+            kufar_rows=[dict(_row("k1"), description="short", _kufar_ad_id=111)],
+        )
+        finder.listings_store.stored_descriptions = Mock(return_value={"k1": "уже сохранённое описание"})
+        finder.kufar.fetch_full_description = Mock(return_value="свежее описание")
+
+        finder.run(_default_args())
+
+        finder.kufar.fetch_full_description.assert_not_called()
+        notified_rows = finder.notifier.notify.call_args[0][0]
+        assert notified_rows[0]["description"] == "уже сохранённое описание"
+
+    def test_retry_delay_honors_retry_after_header_on_429(self):
+        headers = Message()
+        headers["Retry-After"] = "7"
+        error = urllib.error.HTTPError("url", 429, "Too Many Requests", headers, None)
+        assert fa.ApartmentFinder._retry_delay(error, attempt=0) == 7.0
+
+    def test_retry_delay_backs_off_progressively_on_429_without_retry_after(self):
+        error = urllib.error.HTTPError("url", 429, "Too Many Requests", Message(), None)
+        assert fa.ApartmentFinder._retry_delay(error, attempt=0) == 5.0
+        assert fa.ApartmentFinder._retry_delay(error, attempt=1) == 10.0
+
+    def test_retry_delay_is_flat_one_second_for_non_429_errors(self):
+        assert fa.ApartmentFinder._retry_delay(RuntimeError("boom"), attempt=0) == 1.0
 
     def test_run_prints_a_table_of_all_stored_listings(self, tmp_path, capsys):
         # notifier is mocked (see _finder), so it never touches listings_store itself -
