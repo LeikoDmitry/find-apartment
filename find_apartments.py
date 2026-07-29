@@ -455,7 +455,11 @@ class RealtScraper(Scraper):
                             "link": f"https://realt.by/rent-flat-for-long/object/{code}/" if code else None,
                             "updated": (o.get("updatedAt") or "")[:10],
                             "images": list(o.get("images") or []),
-                            "description": clean_description(o.get("description")),
+                            # "description" is the long structured write-up and is often
+                            # empty; "headline" (rendered as "Примечание" on realt.by) is a
+                            # shorter free-text note that's populated whenever description
+                            # isn't - never both empty in practice, so fall back to it.
+                            "description": clean_description(o.get("description") or o.get("headline")),
                             "latitude": coordinates[0] if coordinates else None,
                             "longitude": coordinates[1] if coordinates else None,
                         }
