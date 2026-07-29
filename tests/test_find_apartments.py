@@ -315,6 +315,34 @@ class TestFormatTelegramMessage:
         )
         assert "📝" not in text
 
+    def test_max_length_leaves_short_text_untouched(self):
+        row = {
+            "price_byn": 800.0,
+            "area_m2": "45",
+            "floor": 1,
+            "floors_total": 5,
+            "address": "a",
+            "link": "l",
+            "description": "хорошая квартира",
+        }
+        assert fa.format_telegram_message(row, max_length=1024) == fa.format_telegram_message(row)
+
+    def test_max_length_trims_long_description_but_keeps_header_and_link(self):
+        row = {
+            "price_byn": 800.0,
+            "area_m2": "45",
+            "floor": 1,
+            "floors_total": 5,
+            "address": "a",
+            "link": "https://kufar.by/1",
+            "description": "x" * 2000,
+        }
+        text = fa.format_telegram_message(row, max_length=fa.TELEGRAM_CAPTION_LIMIT)
+        assert len(text) <= fa.TELEGRAM_CAPTION_LIMIT
+        assert text.endswith("🔗 https://kufar.by/1")
+        assert "🏢 этаж 1/5" in text
+        assert text.count("x") < 2000
+
 
 # --------------------------------------------------------------------------
 # ListingNotifier
@@ -482,6 +510,20 @@ class TestListingNotifier:
         notifier.notify([_row("l1", images=["a.jpg"])])
 
         send_photo.assert_called_once()
+
+    def test_truncates_caption_for_long_description_to_avoid_telegram_400(self, tmp_path, monkeypatch):
+        notifier, config_store, _, _ = self._notifier(tmp_path)
+        config_store.update(results_initialized=True)
+        send_photo = Mock()
+        monkeypatch.setattr(fa.TelegramClient, "send_photo", send_photo)
+
+        row = _row("l1", images=["a.jpg"])
+        row["description"] = "x" * 2000
+
+        notifier.notify([row])
+
+        sent_caption = send_photo.call_args.args[1]
+        assert len(sent_caption) <= fa.TELEGRAM_CAPTION_LIMIT
 
     def test_uses_no_photo_file_when_no_images_and_file_exists(self, tmp_path, monkeypatch):
         notifier, config_store, _, no_photo_path = self._notifier(tmp_path)

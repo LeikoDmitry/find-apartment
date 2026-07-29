@@ -28,6 +28,10 @@ USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
 )
 
+# Telegram rejects sendPhoto/sendMediaGroup with 400 Bad Request when the
+# caption exceeds this; plain sendMessage allows up to 4096 instead.
+TELEGRAM_CAPTION_LIMIT = 1024
+
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_PATH = os.path.join(SCRIPT_DIR, "config.yaml")
 LISTINGS_DB_PATH = os.path.join(SCRIPT_DIR, "listings.db")
@@ -491,21 +495,34 @@ class ListingDeduper:
         return result
 
 
-def format_telegram_message(row: Row) -> str:
+def format_telegram_message(row: Row, max_length: int | None = None) -> str:
     area = row.get("area_m2")
     floor = row.get("floor")
     floors_total = row.get("floors_total")
     floor_str = f"{floor}/{floors_total}" if floor and floors_total else "—"
-    lines = [
+    header_lines = [
         f"🆕🏠 Новая квартира: 💰 {row.get('price_byn')} BYN/мес",
         f"📐 {area} м² · 🏢 этаж {floor_str}",
         f"📍 {row.get('address')}",
     ]
+    link_line = f"🔗 {row.get('link')}"
     description = row.get("description")
-    if description:
-        lines.append(f"📝 {description}")
-    lines.append(f"🔗 {row.get('link')}")
-    return "\n".join(lines)
+
+    lines = [*header_lines, f"📝 {description}", link_line] if description else [*header_lines, link_line]
+    text = "\n".join(lines)
+
+    if description and max_length is not None and len(text) > max_length:
+        # Trim only the description so the header/link (the essentials) always survive.
+        budget = max_length - len("\n".join([*header_lines, "📝 …", link_line]))
+        trimmed_description = description[:budget].rstrip() + "…" if budget > 0 else None
+        lines = (
+            [*header_lines, f"📝 {trimmed_description}", link_line]
+            if trimmed_description
+            else [*header_lines, link_line]
+        )
+        text = "\n".join(lines)
+
+    return text
 
 
 class ListingNotifier:
@@ -552,14 +569,15 @@ class ListingNotifier:
             if i > 0:
                 time.sleep(2)  # keep a clear gap so consecutive listings/albums don't blur together
             text = format_telegram_message(row)
+            caption = format_telegram_message(row, max_length=TELEGRAM_CAPTION_LIMIT)
             images = row.get("images") or []
             try:
                 if len(images) >= 2:
-                    client.send_media_group(images, text)
+                    client.send_media_group(images, caption)
                 elif len(images) == 1:
-                    client.send_photo(images[0], text)
+                    client.send_photo(images[0], caption)
                 elif os.path.exists(self.no_photo_path):
-                    client.send_photo_file(self.no_photo_path, text)
+                    client.send_photo_file(self.no_photo_path, caption)
                 else:
                     client.send_message(text)
                 sent += 1
