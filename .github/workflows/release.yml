@@ -6,6 +6,7 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 jobs:
   release:
@@ -39,3 +40,11 @@ jobs:
         with:
           tag_name: ${{ steps.version.outputs.next }}
           generate_release_notes: true
+
+      - name: Trigger image publish
+        # A tag pushed with the default GITHUB_TOKEN doesn't trigger other
+        # workflows (GitHub's anti-recursion guard), so publish.yml's
+        # `push: tags` trigger never fires for it - dispatch it explicitly.
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run publish.yml --ref master -f ref="${{ steps.version.outputs.next }}"
