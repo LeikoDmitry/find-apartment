@@ -404,7 +404,12 @@ def _row(link, images=None, source="kufar.by", address="Физкультурна
 class TestListingsStore:
     def test_seen_links_empty_for_fresh_store(self, tmp_path):
         store = fa.ListingsStore(tmp_path / "listings.db")
-        assert store.seen_links() == set()
+        assert store.seen_links([]) == set()
+
+    def test_seen_links_returns_only_candidates_present_in_db(self, tmp_path):
+        store = fa.ListingsStore(tmp_path / "listings.db")
+        store.save([_row("l1"), _row("l2")])
+        assert store.seen_links(["l1", "l3"]) == {"l1"}
 
     def test_stored_descriptions_empty_for_fresh_store(self, tmp_path):
         store = fa.ListingsStore(tmp_path / "listings.db")
@@ -419,7 +424,7 @@ class TestListingsStore:
         store = fa.ListingsStore(tmp_path / "listings.db")
         store.save([_row("l1", images=["a.jpg", "b.jpg"])])
 
-        assert store.seen_links() == {"l1"}
+        assert store.seen_links(["l1"]) == {"l1"}
         with store._connection() as conn:
             cursor = conn.execute("SELECT * FROM listings WHERE link = 'l1'")
             row = cursor.fetchone()
@@ -436,7 +441,7 @@ class TestListingsStore:
     def test_save_ignores_rows_without_a_link(self, tmp_path):
         store = fa.ListingsStore(tmp_path / "listings.db")
         store.save([dict(_row("l1"), link=None)])
-        assert store.seen_links() == set()
+        assert store.seen_links(["l1"]) == set()
 
     def test_save_upserts_and_keeps_first_seen_at_but_bumps_last_seen_at(self, tmp_path, monkeypatch):
         store = fa.ListingsStore(tmp_path / "listings.db")
@@ -499,7 +504,7 @@ class TestListingNotifier:
         # DB persistence is unconditional (mirrors the old Excel export behavior),
         # even though there's no Telegram to notify
         assert config_store.load()["results_initialized"] is True
-        assert listings_store.seen_links() == {"l1"}
+        assert listings_store.seen_links(["l1"]) == {"l1"}
 
     def test_first_run_establishes_baseline_without_sending(self, tmp_path, monkeypatch):
         notifier, config_store, listings_store, _ = self._notifier(tmp_path)
@@ -510,7 +515,7 @@ class TestListingNotifier:
 
         assert result == 0
         send_message.assert_not_called()
-        assert listings_store.seen_links() == {"l1", "l2"}
+        assert listings_store.seen_links(["l1", "l2"]) == {"l1", "l2"}
         assert config_store.load()["results_initialized"] is True
 
     def test_notify_all_sends_even_on_first_run(self, tmp_path, monkeypatch):
@@ -534,7 +539,7 @@ class TestListingNotifier:
 
         assert result == 1
         send_message.assert_called_once()
-        assert listings_store.seen_links() == {"l1", "l2"}
+        assert listings_store.seen_links(["l1", "l2"]) == {"l1", "l2"}
 
     def test_uses_media_group_for_multiple_images(self, tmp_path, monkeypatch):
         notifier, config_store, _, _ = self._notifier(tmp_path)
