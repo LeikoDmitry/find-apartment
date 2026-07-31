@@ -766,6 +766,40 @@ class TestRealtScraper:
         assert row["latitude"] == 53.9006
         assert row["longitude"] == 27.559
 
+    def test_fetch_falls_back_to_headline_when_description_empty(self, monkeypatch):
+        objects = [
+            {
+                "code": "abc",
+                "priceRates": {"933": 900.0},
+                "address": "Немига ул., 5",
+                "description": None,
+                "headline": "Сдам уютную квартиру рядом с метро",
+            }
+        ]
+        html = self._html(objects, total_count=1)
+        monkeypatch.setattr(fa, "http_get", lambda url: html.encode("utf-8"))
+
+        rows = fa.RealtScraper().fetch(500, 1300)
+
+        assert rows[0]["description"] == "Сдам уютную квартиру рядом с метро"
+
+    def test_fetch_prefers_description_over_headline_when_both_present(self, monkeypatch):
+        objects = [
+            {
+                "code": "abc",
+                "priceRates": {"933": 900.0},
+                "address": "Немига ул., 5",
+                "description": "Полное описание",
+                "headline": "Короткая пометка",
+            }
+        ]
+        html = self._html(objects, total_count=1)
+        monkeypatch.setattr(fa, "http_get", lambda url: html.encode("utf-8"))
+
+        rows = fa.RealtScraper().fetch(500, 1300)
+
+        assert rows[0]["description"] == "Полное описание"
+
     def test_fetch_follows_pagination(self, monkeypatch):
         page1 = self._html([{"code": "p1", "priceRates": {"933": 900.0}}], total_count=2, page_size=1)
         page2 = self._html([{"code": "p2", "priceRates": {"933": 950.0}}], total_count=2, page_size=1)
