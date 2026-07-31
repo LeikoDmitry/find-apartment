@@ -11,5 +11,6 @@ config.yaml
 listings.db
 listings.db-wal
 listings.db-shm
+watcher.lock
 .env
 banner.svg
