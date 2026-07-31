@@ -17,7 +17,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from abc import ABC, abstractmethod
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from typing import Any, ClassVar
 
 import requests
@@ -163,9 +163,19 @@ class ListingsStore:
         finally:
             conn.close()
 
-    def seen_links(self) -> set[str]:
+    def seen_links(self, links: Iterable[str] | None = None) -> set[str]:
+        """Return the subset of `links` already present in the database.
+
+        If `links` is None or empty, returns an empty set. This avoids the
+        full-table scan the old implementation used and keeps memory usage
+        constant regardless of how many historical listings are stored.
+        """
+        candidates = list(links) if links is not None else []
+        if not candidates:
+            return set()
+        placeholders = ",".join("?" * len(candidates))
         with self._connection() as conn:
-            rows = conn.execute("SELECT link FROM listings").fetchall()
+            rows = conn.execute(f"SELECT link FROM listings WHERE link IN ({placeholders})", candidates).fetchall()
         return {link for (link,) in rows}
 
     def stored_descriptions(self) -> dict[str, str]:
@@ -584,7 +594,8 @@ class ListingNotifier:
         seen before.
         """
         is_first_run = not self.config_store.load()["results_initialized"]
-        seen = self.listings_store.seen_links()
+        candidate_links = [r["link"] for r in rows if r.get("link")]
+        seen = self.listings_store.seen_links(candidate_links)
         new_rows = list(rows) if notify_all else [r for r in rows if r.get("link") and r["link"] not in seen]
 
         self.listings_store.save(rows)
