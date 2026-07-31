@@ -12,3 +12,4 @@ listings.db
 listings.db-wal
 listings.db-shm
 .env
+banner.svg
