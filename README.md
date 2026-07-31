@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="banner.svg" alt="find-apartment — поиск квартир в аренду в Минске с уведомлениями в Telegram" width="100%">
+</p>
+
 # find-apartment
 
 [![Tests](https://github.com/LeikoDmitry/find-apartment/actions/workflows/tests.yml/badge.svg)](https://github.com/LeikoDmitry/find-apartment/actions/workflows/tests.yml)
@@ -204,6 +208,7 @@ config.yaml                    # настройки + Telegram-креды (со�
 watcher.lock                   # flock-файл: не даёт запустить второй watcher (создаётся автоматически)
 listings.db                    # SQLite: полные данные найденных объявлений (создаётся автоматически)
 tests/                         # unit-тесты (pytest)
+banner.svg                     # шапка этого README
 Dockerfile                     # образ для finder/watcher (публикуется в GHCR)
 Dockerfile.dev                 # образ с dev-зависимостями для сервиса checks
 docker-compose.yml             # сервисы finder, watcher, checks
